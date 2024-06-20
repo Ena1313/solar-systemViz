@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Solar System Visualization</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <button id="animationButton">Stop Animation</button>
+  <button id="resetButton">Reset Animation</button>
+  <button id="showGraphsButton">Show Planet Graphs</button>
+  <button id="showMoonsButton">Show Moon Graphs</button>
+
+  <!-- Iskočni prozor za planete -->
+  <div id="planetInfoPopup" class="popup">
+    <div class="popup-content" id="planetInfoContent">
+      <span class="close" id="closePopup">&times;</span>
+      <div class="planet-image-top" id="planetImageTop"></div>
+      <h2 id="planetName"></h2>
+      <p id="planetDescription"></p>
+      <div class="planet-info">
+        <div class="planet-text-info" id="planetData"></div>
+        <div class="planet-image" id="planetImage"></div>
+      </div>
+      <span class="close2" id="closePopup2">&times;</span>
+    </div>
+  </div>
+
+  <!-- Iskočni prozor za graf -->
+  <div id="barChartPopup" class="popup-graph">
+    <div class="popup-content-graph">
+      <span class="close" id="closeBarChartPopup">&times;</span>
+      <h2>Planetary Graphs</h2>
+      <div id="barChart"></div>
+      <div class="graph-buttons">
+        <button onclick="showChart('Mass (10^24kg)', 'Planetary Mass')">Planetary Mass</button>
+        <button onclick="showChart('Diameter (km)', 'Planetary Diameter')">Planetary Diameter</button>
+        <button onclick="showChart('Density (kg/m^3)', 'Planetary Density')">Planetary Density</button>
+        <button onclick="showChart('Surface Gravity(m/s^2)', 'Planetary Surface Gravity')">Planetary Surface
+          Gravity</button>
+        <button onclick="showChart('Rotation Period (hours)', 'Planetary Rotation Period')">Planetary Rotation
+          Period</button>
+        <button onclick="showChart('Length of Day (hours)', 'Planetary Length of Day')">Planetary Length of Day</button>
+        <button onclick="showChart('Distance from Sun (10^6 km)', 'Distance from Sun')">Distance from Sun</button>
+        <button onclick="showChart('Orbital Velocity (km/s)', 'Orbital Velocity')">Orbital Velocity</button>
+        <button onclick="showChart('Number of Moons', 'Number of Moons')">Number of Moons</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Iskočni prozor za mjesece -->
+  <div id="moonModal" class="modal">
+    <div class="modal-content">
+      <span class="close" id="closeMoonModal">&times;</span>
+      <h2>Moon Graphs</h2>
+      <div id="moonChart"></div>
+      <div class="moon-buttons">
+        <button onclick="changeActiveButton(this, 'gravity', 'Gravity')">Gravity</button>
+        <button onclick="changeActiveButton(this, 'meanRadius', 'Mean Radius')">Mean Radius</button>
+        <button onclick="changeActiveButton(this, 'sideralOrbit', 'Sideral Orbit')">Sideral Orbit</button>
+        <button onclick="changeActiveButton(this, 'sideralRotation', 'Sideral Rotation')">Sideral Rotation</button>
+        <button onclick="changeActiveButton(this, 'mass_kg', 'Mass')">Mass</button>
+      </div>
+      <button id="sortButton">Sort Data</button>
+      <div id="moonViz"></div>
+    </div>
+  </div>
+
+  <script src="https://d3js.org/d3.v5.min.js"></script>
+  <script src="planetGraphs.js"></script>
+  <script src="moonGraphs.js"></script>
+
+  <script>
+
+    d3.json("../data/planetsDatabase.json")
+      .then(planetsDatabase => {
+
+        const sunRadius = 300;
+        const sunImage = "images/Sun.png";
+
+        const maxDiameter = d3.max(planetsDatabase, d => d["Diameter (km)"]);
+        const minDiameter = d3.min(planetsDatabase, d => d["Diameter (km)"]);
+
+        const diameterScale = d3.scaleLinear()
+          .domain([minDiameter, maxDiameter])
+          .range([10, 100]);
+
+        const planetsData = planetsDatabase.map(planet => ({
+          name: planet.Planet,
+          radius: diameterScale(planet["Diameter (km)"]) / 2,
+          orbitalPeriod: planet["Orbital Period (days)"],
+          distanceFromSun: planet["Distance from Sun (10^6 km)"] / 2 + sunRadius,
+          image: planet.Image
+        }));
+
+        const maxOrbitRadius = d3.max(planetsData, d => d.distanceFromSun) + d3.max(planetsData, d => d.radius);
+
+        const width = maxOrbitRadius * 6;
+        const height = maxOrbitRadius * 4;
+
+        const sunCenterX = width / 2;
+        const sunCenterY = height / 2;
+
+        const svg = d3.select("body").append("svg")
+          .attr("width", width)
+          .attr("height", height)
+          .call(d3.zoom().on("zoom", function () {
+            svg.attr("transform", d3.event.transform);
+          }))
+          .append("g");
+
+        svg.append("image")
+          .attr("xlink:href", sunImage)
+          .attr("x", sunCenterX - sunRadius) // Centriranje slike po x osi
+          .attr("y", sunCenterY - sunRadius) // Centriranje slike po y osi
+          .attr("width", sunRadius * 2) // da bude u sredini
+          .attr("height", sunRadius * 2);
+
+        const planetOrbits = svg.selectAll(".planet-orbit")
+          .data(planetsData)
+          .enter()
+          .append("circle")
+          .attr("class", "planet-orbit")
+          .attr("fill", "none")
+          .attr("stroke", "white")
+          .attr("stroke-width", 0.5)
+          .attr("cx", sunCenterX)
+          .attr("cy", sunCenterY)
+          .attr("r", d => d.distanceFromSun);
+
+        const planetGroups = svg.selectAll(".planet")
+          .data(planetsData)
+          .enter()
+          .append("g")
+          .attr("class", "planet")
+          .attr("transform", function (d) {
+            const x = sunCenterX + d.distanceFromSun * Math.cos(d.angle);
+            const y = sunCenterY + d.distanceFromSun * Math.sin(d.angle);
+            return `translate(${x},${y})`;
+          })
+          .on("click", function (event, d) { // Dodavanje događaja za klik
+            showPlanetInfo(d);
+          });
+
+        planetGroups.append("image")
+          .attr("xlink:href", d => d.image)
+          .attr("width", d => d.radius * 2)
+          .attr("height", d => d.radius * 2)
+          .attr("x", d => -d.radius)
+          .attr("y", d => -d.radius);
+
+        planetGroups.append("text")
+          .text(d => d.name)
+          .attr("x", d => d.radius + 10)
+          .attr("y", d => d.radius / 2)
+          .attr("fill", "white");
+
+        //Postavljanje random zvijezda na pozadinu__________________________________________________________
+        const numberOfStars = 10000;
+        const starSizeRange = [0.01, 3];
+
+        for (let i = 0; i < numberOfStars; i++) {
+          const starSize = Math.random() * (starSizeRange[1] - starSizeRange[0]) + starSizeRange[0];
+          const starX = Math.random() * width;
+          const starY = Math.random() * height;
+
+          svg.append("circle")
+            .attr("cx", starX)
+            .attr("cy", starY)
+            .attr("r", starSize)
+            .attr("fill", "white");
+        }
+
+        //Animacija brzine kretnje planeta___________________________________________________________________
+        let animationInterval;
+
+        const timeFactor = 1;
+
+        planetsData.forEach(planet => {
+          planet.rotationSpeed = (2 * Math.PI) / (planet.orbitalPeriod * timeFactor);
+        });
+
+        function startAnimation() {
+          stopAnimation();
+          animationInterval = setInterval(() => {
+            planetGroups.each(function (d) {
+              d.angle = (d.angle || 0) + d.rotationSpeed;
+              const x = d.distanceFromSun * Math.cos(d.angle);
+              const y = d.distanceFromSun * Math.sin(d.angle);
+              d3.select(this).attr("transform", `translate(${sunCenterX + x},${sunCenterY + y})`);
+            });
+          }, 30);
+        }
+
+        function stopAnimation() {
+          clearInterval(animationInterval);
+        }
+
+        startAnimation();
+
+
+        //BUTTONS ________________________________________________________________________
+
+        const animationButton = document.getElementById("animationButton");
+
+        animationButton.addEventListener("click", function () {
+          if (animationButton.textContent === "Stop Animation") {
+            stopAnimation();
+            animationButton.textContent = "Start Animation";
+            setPlanetInteraction(true);
+          } else {
+            startAnimation();
+            animationButton.textContent = "Stop Animation";
+            setPlanetInteraction(false);
+          }
+        });
+
+        const resetAnimationButton = document.getElementById("resetButton");
+
+        resetAnimationButton.addEventListener("click", function () {
+          stopAnimation();
+          planetGroups.each(function (d) {
+            d.angle = 0; // Reset kuta rotacije svake planete na nulu
+            const x = d.distanceFromSun * Math.cos(d.angle);
+            const y = d.distanceFromSun * Math.sin(d.angle);
+            d3.select(this).attr("transform", `translate(${sunCenterX + x},${sunCenterY + y})`);
+          });
+          startAnimation();
+        });
+
+        //KLIKABILNI PLANETI _____________________________________________________________________________________________
+
+        function setPlanetInteraction(active) {
+          planetGroups.selectAll(".planet")
+            .style("pointer-events", active ? "auto" : "none");
+        }
+
+        function showPlanetInfo(planetData) {
+          console.log("Planet information:");
+          console.log("Name:", planetData.name);
+          console.log("Radius:", planetData.radius);
+          console.log("Color:", planetData.color);
+          console.log("Rotation Speed:", planetData.rotationSpeed);
+          console.log("Distance From Sun:", planetData.distanceFromSun);
+        }
+
+        const g = svg.append("g");
+
+        // Definiramo zoom funkcionalnost_________________________________________________________________________________
+        const zoom = d3.zoom()
+          .scaleExtent([0.5, 4]) // Omogućava zumiranje u rasponu od 0.5x do 4x originalne veličine
+          .on("zoom", zoomed); // Definiramo funkciju koja će se izvršavati prilikom zumiranja
+
+        // Funkcija koja se poziva prilikom zumiranja
+        function zoomed(event) {
+          g.attr("transform", event.transform); // Transformiramo grupu g prema transformaciji događaja
+        }
+
+        //ISKOCNI PROZOR__________________________________________________________________________________________________
+        function showPlanetInfoPopup(planetData) {
+          const planetInfoPopup = document.getElementById("planetInfoPopup");
+          const planetName = document.getElementById("planetName");
+          const planetDescription = document.getElementById("planetDescription"); // Dodajte ovu liniju
+          const planetDataDisplay = document.getElementById("planetData");
+          const planetImage = document.getElementById("planetImage");
+          const planetImageTop = document.getElementById("planetImageTop");
+
+          planetName.textContent = planetData.name;
+          planetDescription.textContent = getDescription(planetData.name);
+
+          planetDataDisplay.innerHTML = "";
+
+          const planet = planetsDatabase.find(p => p.Planet === planetData.name);
+
+          if (planet) {
+            const planetInfo = [
+              "Mass (10^24kg): " + planet["Mass (10^24kg)"],
+              "Diameter (km): " + planet["Diameter (km)"],
+              "Density (kg/m^3): " + planet["Density (kg/m^3)"],
+              "Surface Gravity(m/s^2): " + planet["Surface Gravity(m/s^2)"],
+              "Escape Velocity (km/s): " + planet["Escape Velocity (km/s)"],
+              "Rotation Period (hours): " + planet["Rotation Period (hours)"],
+              "Length of Day (hours): " + planet["Length of Day (hours)"],
+              "Distance from Sun (10^6 km): " + planet["Distance from Sun (10^6 km)"],
+              "Perihelion (10^6 km): " + planet["Perihelion (10^6 km)"],
+              "Aphelion (10^6 km): " + planet["Aphelion (10^6 km)"],
+              "Orbital Period (days): " + planet["Orbital Period (days)"],
+              "Orbital Velocity (km/s): " + planet["Orbital Velocity (km/s)"],
+              "Orbital Inclination (degrees): " + planet["Orbital Inclination (degrees)"],
+              "Orbital Eccentricity: " + planet["Orbital Eccentricity"],
+              "Obliquity to Orbit (degrees): " + planet["Obliquity to Orbit (degrees)"],
+              "Mean Temperature (C): " + planet["Mean Temperature (C)"],
+              "Surface Pressure (bars): " + planet["Surface Pressure (bars)"],
+              "Number of Moons: " + planet["Number of Moons"],
+              "Ring System?: " + planet["Ring System?"],
+              "Global Magnetic Field?: " + planet["Global Magnetic Field?"],
+            ];
+
+            // Add each planet info as a list item
+            planetInfo.forEach(info => {
+              const listItem = document.createElement("li");
+              listItem.textContent = info;
+              planetDataDisplay.appendChild(listItem);
+            });
+
+            // Set planet image
+            const imageUrl = planet.Image;
+            planetImage.innerHTML = `<img src="${imageUrl}" alt="${planetData.name}">`;
+
+            // Set top image background
+            planetImageTop.style.backgroundImage = `url(${imageUrl})`;
+
+          } else {
+            planetDataDisplay.textContent = "Data not available";
+            planetImage.innerHTML = "<p>Image not available</p>";
+            planetImageTop.style.backgroundImage = "none";
+          }
+
+          // Display the popup
+          planetInfoPopup.style.display = "block";
+        }
+
+        function getDescription(planetName) {
+          const planet = planetsDatabase.find(p => p.Planet === planetName);
+          return planet ? planet.Description : "Description not available";
+        }
+
+        function closePlanetInfoPopup() {
+          const planetInfoPopup = document.getElementById("planetInfoPopup");
+          planetInfoPopup.style.display = "none";
+        }
+
+        // Close popup when .close (x) button is clicked
+        document.getElementById("closePopup").addEventListener("click", closePlanetInfoPopup);
+        document.getElementById('closePopup2').onclick = function () {
+          document.getElementById('planetInfoPopup').style.display = 'none';
+        };
+
+        // Attach click event to each planet circle
+        svg.selectAll(".planet")
+          .style("cursor", "pointer")
+          .on("click", function (d) {
+            showPlanetInfoPopup(d);
+          });
+
+      })
+
+      .catch(error => {
+        console.error('Unable to load planets data:', error);
+      });
+
+  </script>
+</body>
+
+</html>
